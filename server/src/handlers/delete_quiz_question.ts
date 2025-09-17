@@ -1,6 +1,15 @@
+import { db } from '../db';
+import { quizQuestionsTable } from '../db/schema';
+import { eq } from 'drizzle-orm';
+
 export async function deleteQuizQuestion(questionId: number): Promise<void> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is for teacher users to delete quiz questions
-    // from their quizzes.
-    return Promise.resolve();
+  try {
+    // Delete the quiz question by ID
+    await db.delete(quizQuestionsTable)
+      .where(eq(quizQuestionsTable.id, questionId))
+      .execute();
+  } catch (error) {
+    console.error('Quiz question deletion failed:', error);
+    throw error;
+  }
 }

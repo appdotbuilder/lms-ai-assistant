@@ -1,17 +1,28 @@
+import { db } from '../db';
+import { usersTable } from '../db/schema';
 import { type UpdateUserRoleInput, type User } from '../schema';
+import { eq } from 'drizzle-orm';
 
-export async function updateUserRole(input: UpdateUserRoleInput): Promise<User> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is for admin users to update a user's role
-    // (admin, teacher, student) in the database.
-    return Promise.resolve({
-        id: input.user_id,
-        email: 'placeholder@example.com',
-        password_hash: 'hashed_password_placeholder',
-        first_name: 'Placeholder',
-        last_name: 'User',
+export const updateUserRole = async (input: UpdateUserRoleInput): Promise<User> => {
+  try {
+    // Update the user's role
+    const result = await db.update(usersTable)
+      .set({
         role: input.role,
-        created_at: new Date(),
         updated_at: new Date()
-    } as User);
-}
+      })
+      .where(eq(usersTable.id, input.user_id))
+      .returning()
+      .execute();
+
+    // Check if user was found and updated
+    if (result.length === 0) {
+      throw new Error(`User with id ${input.user_id} not found`);
+    }
+
+    return result[0];
+  } catch (error) {
+    console.error('User role update failed:', error);
+    throw error;
+  }
+};

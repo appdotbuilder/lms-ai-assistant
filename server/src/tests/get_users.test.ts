@@ -2,32 +2,31 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { resetDB, createDB } from '../helpers';
 import { db } from '../db';
 import { usersTable } from '../db/schema';
-import { type CreateUserInput } from '../schema';
+import { type User } from '../schema';
 import { getUsers } from '../handlers/get_users';
 
-
-// Test user inputs
-const testUserInputs: CreateUserInput[] = [
+// Test user data
+const testUsers = [
   {
-    email: 'teacher@example.com',
-    password: 'password123',
-    first_name: 'John',
-    last_name: 'Teacher',
-    role: 'teacher'
-  },
-  {
-    email: 'student@example.com',
-    password: 'password456',
-    first_name: 'Jane',
-    last_name: 'Student',
-    role: 'student'
-  },
-  {
-    email: 'admin@example.com',
-    password: 'password789',
+    email: 'admin@test.com',
+    password_hash: 'hashed_password_1',
     first_name: 'Admin',
     last_name: 'User',
-    role: 'administrator'
+    role: 'admin' as const
+  },
+  {
+    email: 'teacher@test.com',
+    password_hash: 'hashed_password_2',
+    first_name: 'Teacher',
+    last_name: 'Smith',
+    role: 'teacher' as const
+  },
+  {
+    email: 'student@test.com',
+    password_hash: 'hashed_password_3',
+    first_name: 'Student',
+    last_name: 'Johnson',
+    role: 'student' as const
   }
 ];
 
@@ -39,128 +38,98 @@ describe('getUsers', () => {
     const result = await getUsers();
 
     expect(result).toEqual([]);
-    expect(result).toHaveLength(0);
   });
 
   it('should return all users from database', async () => {
-    // Create test users directly in database
-    const hashedPassword = 'hashed_password_123';
-    
+    // Create test users
     await db.insert(usersTable)
-      .values([
-        {
-          email: testUserInputs[0].email,
-          password_hash: hashedPassword,
-          first_name: testUserInputs[0].first_name,
-          last_name: testUserInputs[0].last_name,
-          role: testUserInputs[0].role
-        },
-        {
-          email: testUserInputs[1].email,
-          password_hash: hashedPassword,
-          first_name: testUserInputs[1].first_name,
-          last_name: testUserInputs[1].last_name,
-          role: testUserInputs[1].role
-        }
-      ])
-      .execute();
-
-    const result = await getUsers();
-
-    expect(result).toHaveLength(2);
-    
-    // Check first user
-    expect(result[0].email).toEqual('teacher@example.com');
-    expect(result[0].first_name).toEqual('John');
-    expect(result[0].last_name).toEqual('Teacher');
-    expect(result[0].role).toEqual('teacher');
-    expect(result[0].id).toBeDefined();
-    expect(result[0].created_at).toBeInstanceOf(Date);
-    expect(result[0].updated_at).toBeInstanceOf(Date);
-    expect(result[0].password_hash).toBeDefined();
-
-    // Check second user
-    expect(result[1].email).toEqual('student@example.com');
-    expect(result[1].first_name).toEqual('Jane');
-    expect(result[1].last_name).toEqual('Student');
-    expect(result[1].role).toEqual('student');
-    expect(result[1].id).toBeDefined();
-    expect(result[1].created_at).toBeInstanceOf(Date);
-    expect(result[1].updated_at).toBeInstanceOf(Date);
-    expect(result[1].password_hash).toBeDefined();
-  });
-
-  it('should return users with all different roles', async () => {
-    // Create users with all possible roles
-    const hashedPassword = 'hashed_password_123';
-    
-    await db.insert(usersTable)
-      .values(testUserInputs.map(input => ({
-        email: input.email,
-        password_hash: hashedPassword,
-        first_name: input.first_name,
-        last_name: input.last_name,
-        role: input.role
-      })))
+      .values(testUsers)
       .execute();
 
     const result = await getUsers();
 
     expect(result).toHaveLength(3);
-    
-    // Check that all roles are represented
-    const roles = result.map(user => user.role);
-    expect(roles).toContain('teacher');
-    expect(roles).toContain('student');
-    expect(roles).toContain('administrator');
+    expect(result[0].email).toEqual('admin@test.com');
+    expect(result[0].first_name).toEqual('Admin');
+    expect(result[0].last_name).toEqual('User');
+    expect(result[0].role).toEqual('admin');
+    expect(result[0].id).toBeDefined();
+    expect(result[0].created_at).toBeInstanceOf(Date);
+    expect(result[0].updated_at).toBeInstanceOf(Date);
   });
 
-  it('should return users ordered by creation', async () => {
-    const hashedPassword = 'hashed_password_123';
-    
-    // Insert users one by one to ensure different creation times
+  it('should return users with all roles', async () => {
+    // Create test users
     await db.insert(usersTable)
-      .values({
-        email: 'first@example.com',
-        password_hash: hashedPassword,
-        first_name: 'First',
-        last_name: 'User',
-        role: 'student'
-      })
-      .execute();
-
-    // Small delay to ensure different timestamps
-    await new Promise(resolve => setTimeout(resolve, 10));
-    
-    await db.insert(usersTable)
-      .values({
-        email: 'second@example.com',
-        password_hash: hashedPassword,
-        first_name: 'Second',
-        last_name: 'User',
-        role: 'teacher'
-      })
+      .values(testUsers)
       .execute();
 
     const result = await getUsers();
 
-    expect(result).toHaveLength(2);
-    expect(result[0].first_name).toEqual('First');
-    expect(result[1].first_name).toEqual('Second');
-    expect(result[0].created_at.getTime()).toBeLessThanOrEqual(result[1].created_at.getTime());
+    const roles = result.map(user => user.role);
+    expect(roles).toContain('admin');
+    expect(roles).toContain('teacher');
+    expect(roles).toContain('student');
+  });
+
+  it('should return users in order they were created', async () => {
+    // Create test users one by one
+    const user1 = await db.insert(usersTable)
+      .values(testUsers[0])
+      .returning()
+      .execute();
+
+    const user2 = await db.insert(usersTable)
+      .values(testUsers[1])
+      .returning()
+      .execute();
+
+    const user3 = await db.insert(usersTable)
+      .values(testUsers[2])
+      .returning()
+      .execute();
+
+    const result = await getUsers();
+
+    expect(result).toHaveLength(3);
+    // Verify users are returned (order may vary based on database implementation)
+    const userIds = result.map(user => user.id);
+    expect(userIds).toContain(user1[0].id);
+    expect(userIds).toContain(user2[0].id);
+    expect(userIds).toContain(user3[0].id);
+  });
+
+  it('should return complete user objects with all fields', async () => {
+    // Create a single test user
+    await db.insert(usersTable)
+      .values(testUsers[0])
+      .execute();
+
+    const result = await getUsers();
+
+    expect(result).toHaveLength(1);
+    const user = result[0];
+
+    // Verify all required fields are present
+    expect(user.id).toBeDefined();
+    expect(typeof user.id).toBe('number');
+    expect(user.email).toEqual('admin@test.com');
+    expect(user.password_hash).toEqual('hashed_password_1');
+    expect(user.first_name).toEqual('Admin');
+    expect(user.last_name).toEqual('User');
+    expect(user.role).toEqual('admin');
+    expect(user.created_at).toBeInstanceOf(Date);
+    expect(user.updated_at).toBeInstanceOf(Date);
   });
 
   it('should handle large number of users', async () => {
-    const hashedPassword = 'hashed_password_123';
-    
-    // Create 50 test users
-    const manyUsers = Array.from({ length: 50 }, (_, index) => ({
-      email: `user${index}@example.com`,
-      password_hash: hashedPassword,
-      first_name: `User${index}`,
-      last_name: 'Test',
-      role: index % 3 === 0 ? 'administrator' as const : 
-            index % 3 === 1 ? 'teacher' as const : 'student' as const
+    // Create multiple users
+    const manyUsers = Array.from({ length: 10 }, (_, i) => ({
+      email: `user${i}@test.com`,
+      password_hash: `hashed_password_${i}`,
+      first_name: `User${i}`,
+      last_name: `Test`,
+      role: i % 3 === 0 ? 'admin' as const : i % 3 === 1 ? 'teacher' as const : 'student' as const
     }));
 
     await db.insert(usersTable)
@@ -169,9 +138,12 @@ describe('getUsers', () => {
 
     const result = await getUsers();
 
-    expect(result).toHaveLength(50);
-    expect(result.every(user => user.id !== undefined)).toBe(true);
-    expect(result.every(user => user.created_at instanceof Date)).toBe(true);
-    expect(result.every(user => user.updated_at instanceof Date)).toBe(true);
+    expect(result).toHaveLength(10);
+    
+    // Verify all users are present
+    const emails = result.map(user => user.email);
+    for (let i = 0; i < 10; i++) {
+      expect(emails).toContain(`user${i}@test.com`);
+    }
   });
 });

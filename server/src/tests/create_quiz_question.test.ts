@@ -1,23 +1,42 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { resetDB, createDB } from '../helpers';
 import { db } from '../db';
-import { usersTable, coursesTable, contentTable, quizzesTable, quizQuestionsTable } from '../db/schema';
+import { usersTable, coursesTable, lessonsTable, quizzesTable, quizQuestionsTable } from '../db/schema';
 import { type CreateQuizQuestionInput } from '../schema';
 import { createQuizQuestion } from '../handlers/create_quiz_question';
 import { eq } from 'drizzle-orm';
+
+// Test input for multiple choice question
+const testMultipleChoiceInput: CreateQuizQuestionInput = {
+  quiz_id: 1,
+  question_text: 'What is the capital of France?',
+  question_type: 'multiple_choice',
+  options: ['London', 'Berlin', 'Paris', 'Madrid'],
+  correct_answer: 'Paris',
+  points: 10,
+  order_index: 1
+};
+
+// Test input for true/false question
+const testTrueFalseInput: CreateQuizQuestionInput = {
+  quiz_id: 1,
+  question_text: 'The Earth is flat.',
+  question_type: 'true_false',
+  options: ['True', 'False'],
+  correct_answer: 'False',
+  points: 5,
+  order_index: 2
+};
 
 describe('createQuizQuestion', () => {
   beforeEach(createDB);
   afterEach(resetDB);
 
-  let quizId: number;
-
   beforeEach(async () => {
-    // Create prerequisite data for each test
-    // Create teacher user
-    const teacher = await db.insert(usersTable)
+    // Create prerequisite data: user, course, lesson, and quiz
+    const user = await db.insert(usersTable)
       .values({
-        email: 'teacher@example.com',
+        email: 'teacher@test.com',
         password_hash: 'hashed_password',
         first_name: 'John',
         last_name: 'Teacher',
@@ -26,223 +45,146 @@ describe('createQuizQuestion', () => {
       .returning()
       .execute();
 
-    // Create course
     const course = await db.insert(coursesTable)
       .values({
         title: 'Test Course',
         description: 'A course for testing',
-        teacher_id: teacher[0].id
+        teacher_id: user[0].id
       })
       .returning()
       .execute();
 
-    // Create content
-    const content = await db.insert(contentTable)
+    const lesson = await db.insert(lessonsTable)
       .values({
         course_id: course[0].id,
-        title: 'Test Content',
-        description: 'Content for testing',
-        content_type: 'quiz',
-        content_data: '{"test": true}',
+        title: 'Test Lesson',
+        content: 'Lesson content',
         order_index: 1
       })
       .returning()
       .execute();
 
-    // Create quiz
-    const quiz = await db.insert(quizzesTable)
+    await db.insert(quizzesTable)
       .values({
-        content_id: content[0].id,
+        id: 1,
+        lesson_id: lesson[0].id,
         title: 'Test Quiz',
         description: 'A quiz for testing',
-        time_limit_minutes: 30,
-        max_attempts: 3
+        time_limit: 30
       })
-      .returning()
       .execute();
-
-    quizId = quiz[0].id;
   });
 
   it('should create a multiple choice quiz question', async () => {
-    const testInput: CreateQuizQuestionInput = {
-      quiz_id: quizId,
-      question_text: 'What is 2 + 2?',
-      question_type: 'multiple_choice',
-      correct_answer: '4',
-      options: JSON.stringify(['2', '3', '4', '5']),
-      points: 10.5,
-      order_index: 1
-    };
-
-    const result = await createQuizQuestion(testInput);
+    const result = await createQuizQuestion(testMultipleChoiceInput);
 
     // Basic field validation
-    expect(result.quiz_id).toEqual(quizId);
-    expect(result.question_text).toEqual('What is 2 + 2?');
+    expect(result.quiz_id).toEqual(1);
+    expect(result.question_text).toEqual('What is the capital of France?');
     expect(result.question_type).toEqual('multiple_choice');
-    expect(result.correct_answer).toEqual('4');
-    expect(result.options).toEqual(JSON.stringify(['2', '3', '4', '5']));
-    expect(result.points).toEqual(10.5);
-    expect(typeof result.points).toEqual('number'); // Verify numeric conversion
+    expect(result.options).toEqual(['London', 'Berlin', 'Paris', 'Madrid']);
+    expect(result.correct_answer).toEqual('Paris');
+    expect(result.points).toEqual(10);
     expect(result.order_index).toEqual(1);
     expect(result.id).toBeDefined();
     expect(result.created_at).toBeInstanceOf(Date);
-    expect(result.updated_at).toBeInstanceOf(Date);
   });
 
   it('should create a true/false quiz question', async () => {
-    const testInput: CreateQuizQuestionInput = {
-      quiz_id: quizId,
-      question_text: 'The sky is blue.',
-      question_type: 'true_false',
-      correct_answer: 'true',
-      options: null,
-      points: 5,
-      order_index: 2
-    };
+    const result = await createQuizQuestion(testTrueFalseInput);
 
-    const result = await createQuizQuestion(testInput);
-
+    // Basic field validation
+    expect(result.quiz_id).toEqual(1);
+    expect(result.question_text).toEqual('The Earth is flat.');
     expect(result.question_type).toEqual('true_false');
-    expect(result.correct_answer).toEqual('true');
-    expect(result.options).toBeNull();
+    expect(result.options).toEqual(['True', 'False']);
+    expect(result.correct_answer).toEqual('False');
     expect(result.points).toEqual(5);
-    expect(typeof result.points).toEqual('number');
-  });
-
-  it('should create a short answer quiz question', async () => {
-    const testInput: CreateQuizQuestionInput = {
-      quiz_id: quizId,
-      question_text: 'What is the capital of France?',
-      question_type: 'short_answer',
-      correct_answer: 'Paris',
-      options: null,
-      points: 15.75,
-      order_index: 3
-    };
-
-    const result = await createQuizQuestion(testInput);
-
-    expect(result.question_type).toEqual('short_answer');
-    expect(result.correct_answer).toEqual('Paris');
-    expect(result.options).toBeNull();
-    expect(result.points).toEqual(15.75);
-    expect(typeof result.points).toEqual('number');
+    expect(result.order_index).toEqual(2);
+    expect(result.id).toBeDefined();
+    expect(result.created_at).toBeInstanceOf(Date);
   });
 
   it('should save quiz question to database', async () => {
-    const testInput: CreateQuizQuestionInput = {
-      quiz_id: quizId,
-      question_text: 'What is 2 + 2?',
-      question_type: 'multiple_choice',
-      correct_answer: '4',
-      options: JSON.stringify(['2', '3', '4', '5']),
-      points: 10,
-      order_index: 1
-    };
+    const result = await createQuizQuestion(testMultipleChoiceInput);
 
-    const result = await createQuizQuestion(testInput);
-
-    // Query using proper drizzle syntax
-    const quizQuestions = await db.select()
+    // Query the database to verify the question was saved
+    const questions = await db.select()
       .from(quizQuestionsTable)
       .where(eq(quizQuestionsTable.id, result.id))
       .execute();
 
-    expect(quizQuestions).toHaveLength(1);
-    expect(quizQuestions[0].question_text).toEqual('What is 2 + 2?');
-    expect(quizQuestions[0].question_type).toEqual('multiple_choice');
-    expect(quizQuestions[0].correct_answer).toEqual('4');
-    expect(quizQuestions[0].options).toEqual(JSON.stringify(['2', '3', '4', '5']));
-    expect(parseFloat(quizQuestions[0].points)).toEqual(10);
-    expect(quizQuestions[0].created_at).toBeInstanceOf(Date);
-    expect(quizQuestions[0].updated_at).toBeInstanceOf(Date);
+    expect(questions).toHaveLength(1);
+    expect(questions[0].quiz_id).toEqual(1);
+    expect(questions[0].question_text).toEqual('What is the capital of France?');
+    expect(questions[0].question_type).toEqual('multiple_choice');
+    expect(questions[0].options).toEqual(['London', 'Berlin', 'Paris', 'Madrid']);
+    expect(questions[0].correct_answer).toEqual('Paris');
+    expect(questions[0].points).toEqual(10);
+    expect(questions[0].order_index).toEqual(1);
+    expect(questions[0].created_at).toBeInstanceOf(Date);
   });
 
-  it('should throw error when quiz does not exist', async () => {
-    const testInput: CreateQuizQuestionInput = {
-      quiz_id: 99999, // Non-existent quiz ID
-      question_text: 'What is 2 + 2?',
-      question_type: 'multiple_choice',
-      correct_answer: '4',
-      options: JSON.stringify(['2', '3', '4', '5']),
-      points: 10,
-      order_index: 1
-    };
+  it('should handle multiple questions for the same quiz', async () => {
+    // Create first question
+    const result1 = await createQuizQuestion(testMultipleChoiceInput);
+    
+    // Create second question
+    const result2 = await createQuizQuestion(testTrueFalseInput);
 
-    await expect(createQuizQuestion(testInput)).rejects.toThrow(/quiz with id 99999 not found/i);
-  });
-
-  it('should throw error when multiple choice question has no options', async () => {
-    const testInput: CreateQuizQuestionInput = {
-      quiz_id: quizId,
-      question_text: 'What is 2 + 2?',
-      question_type: 'multiple_choice',
-      correct_answer: '4',
-      options: null,
-      points: 10,
-      order_index: 1
-    };
-
-    await expect(createQuizQuestion(testInput)).rejects.toThrow(/options are required for multiple choice questions/i);
-  });
-
-  it('should throw error when multiple choice question has invalid JSON options', async () => {
-    const testInput: CreateQuizQuestionInput = {
-      quiz_id: quizId,
-      question_text: 'What is 2 + 2?',
-      question_type: 'multiple_choice',
-      correct_answer: '4',
-      options: 'invalid json',
-      points: 10,
-      order_index: 1
-    };
-
-    await expect(createQuizQuestion(testInput)).rejects.toThrow(/options must be valid json/i);
-  });
-
-  it('should handle decimal points correctly', async () => {
-    const testInput: CreateQuizQuestionInput = {
-      quiz_id: quizId,
-      question_text: 'Complex question',
-      question_type: 'short_answer',
-      correct_answer: 'Complex answer',
-      options: null,
-      points: 7.25,
-      order_index: 1
-    };
-
-    const result = await createQuizQuestion(testInput);
-
-    // Verify numeric conversion maintains precision
-    expect(result.points).toEqual(7.25);
-    expect(typeof result.points).toEqual('number');
-
-    // Verify database storage
-    const stored = await db.select()
+    // Verify both questions exist in database
+    const questions = await db.select()
       .from(quizQuestionsTable)
-      .where(eq(quizQuestionsTable.id, result.id))
+      .where(eq(quizQuestionsTable.quiz_id, 1))
       .execute();
 
-    expect(parseFloat(stored[0].points)).toEqual(7.25);
+    expect(questions).toHaveLength(2);
+    expect(questions.map(q => q.id)).toContain(result1.id);
+    expect(questions.map(q => q.id)).toContain(result2.id);
+    expect(questions.map(q => q.question_type)).toContain('multiple_choice');
+    expect(questions.map(q => q.question_type)).toContain('true_false');
   });
 
-  it('should handle valid JSON options for multiple choice', async () => {
-    const options = ['Option A', 'Option B', 'Option C', 'Option D'];
-    const testInput: CreateQuizQuestionInput = {
-      quiz_id: quizId,
-      question_text: 'Choose the correct option',
-      question_type: 'multiple_choice',
-      correct_answer: 'Option A',
-      options: JSON.stringify(options),
-      points: 12,
+  it('should handle questions with different point values', async () => {
+    const highValueQuestion: CreateQuizQuestionInput = {
+      ...testMultipleChoiceInput,
+      question_text: 'High value question',
+      points: 25,
       order_index: 1
     };
 
-    const result = await createQuizQuestion(testInput);
+    const result = await createQuizQuestion(highValueQuestion);
 
-    expect(result.options).toEqual(JSON.stringify(options));
-    expect(JSON.parse(result.options!)).toEqual(options);
+    expect(result.points).toEqual(25);
+    expect(result.question_text).toEqual('High value question');
+  });
+
+  it('should throw error for non-existent quiz', async () => {
+    const invalidInput: CreateQuizQuestionInput = {
+      ...testMultipleChoiceInput,
+      quiz_id: 999 // Non-existent quiz
+    };
+
+    await expect(createQuizQuestion(invalidInput)).rejects.toThrow(/violates foreign key constraint/i);
+  });
+
+  it('should handle questions with complex options arrays', async () => {
+    const complexQuestion: CreateQuizQuestionInput = {
+      quiz_id: 1,
+      question_text: 'Which of the following are programming languages?',
+      question_type: 'multiple_choice',
+      options: ['JavaScript', 'HTML', 'Python', 'CSS', 'Java'],
+      correct_answer: 'JavaScript',
+      points: 15,
+      order_index: 1
+    };
+
+    const result = await createQuizQuestion(complexQuestion);
+
+    expect(result.options).toHaveLength(5);
+    expect(result.options).toContain('JavaScript');
+    expect(result.options).toContain('Python');
+    expect(result.options).toContain('Java');
+    expect(result.correct_answer).toEqual('JavaScript');
   });
 });

@@ -1,15 +1,32 @@
+import { db } from '../db';
+import { assignmentSubmissionsTable } from '../db/schema';
+import { eq } from 'drizzle-orm';
 import { type AssignmentSubmission } from '../schema';
 
 export async function getAssignmentSubmissionsByAssignment(assignmentId: number): Promise<AssignmentSubmission[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is for teacher users to view all student submissions
-    // for a specific assignment to review and grade them.
-    return [];
+  try {
+    const results = await db.select()
+      .from(assignmentSubmissionsTable)
+      .where(eq(assignmentSubmissionsTable.assignment_id, assignmentId))
+      .execute();
+
+    return results;
+  } catch (error) {
+    console.error('Failed to get assignment submissions by assignment:', error);
+    throw error;
+  }
 }
 
 export async function getAssignmentSubmissionsByStudent(studentId: number): Promise<AssignmentSubmission[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is for student users to view their own assignment
-    // submissions, grades, and feedback across all assignments.
-    return [];
+  try {
+    const results = await db.select()
+      .from(assignmentSubmissionsTable)
+      .where(eq(assignmentSubmissionsTable.student_id, studentId))
+      .execute();
+
+    return results;
+  } catch (error) {
+    console.error('Failed to get assignment submissions by student:', error);
+    throw error;
+  }
 }

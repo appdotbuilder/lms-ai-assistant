@@ -5,182 +5,173 @@ import { usersTable } from '../db/schema';
 import { type CreateUserInput } from '../schema';
 import { createUser } from '../handlers/create_user';
 import { eq } from 'drizzle-orm';
-import { createHash } from 'crypto';
 
-// Test input data
-const testUserInput: CreateUserInput = {
-  email: 'test@example.com',
-  password: 'securePassword123',
-  first_name: 'John',
-  last_name: 'Doe',
-  role: 'student'
+// Test inputs for different user roles
+const adminInput: CreateUserInput = {
+  email: 'admin@test.com',
+  password: 'password123',
+  first_name: 'Admin',
+  last_name: 'User',
+  role: 'admin'
 };
 
-const teacherUserInput: CreateUserInput = {
-  email: 'teacher@example.com',
-  password: 'teacherPassword456',
-  first_name: 'Jane',
+const teacherInput: CreateUserInput = {
+  email: 'teacher@test.com',
+  password: 'password123',
+  first_name: 'Teacher',
   last_name: 'Smith',
   role: 'teacher'
 };
 
-const adminUserInput: CreateUserInput = {
-  email: 'admin@university.edu',
-  password: 'adminPassword789',
-  first_name: 'Admin',
-  last_name: 'User',
-  role: 'administrator'
+const studentInput: CreateUserInput = {
+  email: 'student@test.com',
+  password: 'password123',
+  first_name: 'Student',
+  last_name: 'Jones',
+  role: 'student'
 };
 
 describe('createUser', () => {
   beforeEach(createDB);
   afterEach(resetDB);
 
-  it('should create a student user successfully', async () => {
-    const result = await createUser(testUserInput);
+  it('should create an admin user', async () => {
+    const result = await createUser(adminInput);
 
-    // Verify returned user data
-    expect(result.email).toEqual(testUserInput.email);
-    expect(result.first_name).toEqual(testUserInput.first_name);
-    expect(result.last_name).toEqual(testUserInput.last_name);
-    expect(result.role).toEqual('student');
+    // Basic field validation
+    expect(result.email).toEqual('admin@test.com');
+    expect(result.first_name).toEqual('Admin');
+    expect(result.last_name).toEqual('User');
+    expect(result.role).toEqual('admin');
     expect(result.id).toBeDefined();
-    expect(typeof result.id).toBe('number');
     expect(result.created_at).toBeInstanceOf(Date);
     expect(result.updated_at).toBeInstanceOf(Date);
+    
+    // Password should be hashed, not plain text
     expect(result.password_hash).toBeDefined();
-    expect(result.password_hash).not.toEqual(testUserInput.password);
+    expect(result.password_hash).not.toEqual('password123');
+    expect(result.password_hash.length).toBeGreaterThan(20); // Hashed passwords are long
   });
 
-  it('should create a teacher user successfully', async () => {
-    const result = await createUser(teacherUserInput);
+  it('should create a teacher user', async () => {
+    const result = await createUser(teacherInput);
 
-    expect(result.email).toEqual(teacherUserInput.email);
-    expect(result.first_name).toEqual(teacherUserInput.first_name);
-    expect(result.last_name).toEqual(teacherUserInput.last_name);
+    expect(result.email).toEqual('teacher@test.com');
+    expect(result.first_name).toEqual('Teacher');
+    expect(result.last_name).toEqual('Smith');
     expect(result.role).toEqual('teacher');
     expect(result.id).toBeDefined();
     expect(result.created_at).toBeInstanceOf(Date);
     expect(result.updated_at).toBeInstanceOf(Date);
   });
 
-  it('should create an administrator user successfully', async () => {
-    const result = await createUser(adminUserInput);
+  it('should create a student user', async () => {
+    const result = await createUser(studentInput);
 
-    expect(result.email).toEqual(adminUserInput.email);
-    expect(result.first_name).toEqual(adminUserInput.first_name);
-    expect(result.last_name).toEqual(adminUserInput.last_name);
-    expect(result.role).toEqual('administrator');
+    expect(result.email).toEqual('student@test.com');
+    expect(result.first_name).toEqual('Student');
+    expect(result.last_name).toEqual('Jones');
+    expect(result.role).toEqual('student');
     expect(result.id).toBeDefined();
     expect(result.created_at).toBeInstanceOf(Date);
     expect(result.updated_at).toBeInstanceOf(Date);
   });
 
-  it('should hash the password securely', async () => {
-    const result = await createUser(testUserInput);
-
-    // Password should be hashed, not stored in plain text
-    expect(result.password_hash).not.toEqual(testUserInput.password);
-    expect(result.password_hash).toBeDefined();
-    expect(result.password_hash.length).toBeGreaterThan(20); // Hash + salt should be substantial length
-    expect(result.password_hash).toContain(':'); // Should contain salt separator
-
-    // Verify the password can be verified by reconstructing hash
-    const [hash, salt] = result.password_hash.split(':');
-    const expectedHash = createHash('sha256').update(testUserInput.password + salt).digest('hex');
-    expect(hash).toEqual(expectedHash);
-
-    // Verify wrong password fails
-    const wrongHash = createHash('sha256').update('wrongpassword' + salt).digest('hex');
-    expect(hash).not.toEqual(wrongHash);
-  });
-
   it('should save user to database', async () => {
-    const result = await createUser(testUserInput);
+    const result = await createUser(adminInput);
 
-    // Query the database to verify user was saved
+    // Query using proper drizzle syntax
     const users = await db.select()
       .from(usersTable)
       .where(eq(usersTable.id, result.id))
       .execute();
 
     expect(users).toHaveLength(1);
-    const savedUser = users[0];
-    expect(savedUser.email).toEqual(testUserInput.email);
-    expect(savedUser.first_name).toEqual(testUserInput.first_name);
-    expect(savedUser.last_name).toEqual(testUserInput.last_name);
-    expect(savedUser.role).toEqual('student');
-    expect(savedUser.created_at).toBeInstanceOf(Date);
-    expect(savedUser.updated_at).toBeInstanceOf(Date);
+    expect(users[0].email).toEqual('admin@test.com');
+    expect(users[0].first_name).toEqual('Admin');
+    expect(users[0].last_name).toEqual('User');
+    expect(users[0].role).toEqual('admin');
+    expect(users[0].created_at).toBeInstanceOf(Date);
+    expect(users[0].updated_at).toBeInstanceOf(Date);
+    expect(users[0].password_hash).toBeDefined();
+    expect(users[0].password_hash).not.toEqual('password123');
+  });
+
+  it('should hash passwords correctly', async () => {
+    const result1 = await createUser(adminInput);
+    
+    // Create another user with same password to verify hashing creates different hashes
+    const input2: CreateUserInput = {
+      ...adminInput,
+      email: 'admin2@test.com',
+      first_name: 'Second',
+      last_name: 'Admin'
+    };
+    const result2 = await createUser(input2);
+
+    // Both should have hashed passwords but different hashes (due to salt)
+    expect(result1.password_hash).toBeDefined();
+    expect(result2.password_hash).toBeDefined();
+    expect(result1.password_hash).not.toEqual(result2.password_hash);
+    
+    // Verify passwords can be verified
+    const isValid1 = await Bun.password.verify('password123', result1.password_hash);
+    const isValid2 = await Bun.password.verify('password123', result2.password_hash);
+    expect(isValid1).toBe(true);
+    expect(isValid2).toBe(true);
+    
+    // Verify wrong password fails
+    const isInvalid = await Bun.password.verify('wrongpassword', result1.password_hash);
+    expect(isInvalid).toBe(false);
   });
 
   it('should enforce unique email constraint', async () => {
     // Create first user
-    await createUser(testUserInput);
+    await createUser(adminInput);
 
-    // Attempt to create second user with same email
-    const duplicateEmailInput = {
-      ...testUserInput,
+    // Try to create second user with same email
+    const duplicateInput: CreateUserInput = {
+      ...adminInput,
       first_name: 'Different',
-      last_name: 'Person'
+      last_name: 'Name',
+      role: 'student'
     };
 
-    await expect(createUser(duplicateEmailInput)).rejects.toThrow(/unique/i);
+    await expect(createUser(duplicateInput)).rejects.toThrow(/unique/i);
   });
 
-  it('should create multiple users with different emails', async () => {
-    const user1 = await createUser(testUserInput);
-    const user2 = await createUser(teacherUserInput);
-    const user3 = await createUser(adminUserInput);
+  it('should create users with different roles successfully', async () => {
+    // Create all three types of users
+    const admin = await createUser(adminInput);
+    const teacher = await createUser(teacherInput);
+    const student = await createUser(studentInput);
 
-    // All users should have different IDs
-    expect(user1.id).not.toEqual(user2.id);
-    expect(user1.id).not.toEqual(user3.id);
-    expect(user2.id).not.toEqual(user3.id);
+    // Verify all users were created with correct roles
+    expect(admin.role).toEqual('admin');
+    expect(teacher.role).toEqual('teacher');
+    expect(student.role).toEqual('student');
 
-    // Verify all users are in database
+    // Verify all users exist in database
     const allUsers = await db.select()
       .from(usersTable)
       .execute();
 
     expect(allUsers).toHaveLength(3);
-
-    const emails = allUsers.map(user => user.email);
-    expect(emails).toContain(testUserInput.email);
-    expect(emails).toContain(teacherUserInput.email);
-    expect(emails).toContain(adminUserInput.email);
+    
+    const roles = allUsers.map(u => u.role).sort();
+    expect(roles).toEqual(['admin', 'student', 'teacher']);
   });
 
-  it('should handle different password complexities', async () => {
-    const complexPasswordInput: CreateUserInput = {
-      email: 'complex@example.com',
-      password: 'VeryComplex!Password123@#$%^&*()',
-      first_name: 'Complex',
-      last_name: 'User',
-      role: 'student'
-    };
+  it('should generate sequential IDs for multiple users', async () => {
+    const user1 = await createUser(adminInput);
+    const user2 = await createUser(teacherInput);
+    const user3 = await createUser(studentInput);
 
-    const result = await createUser(complexPasswordInput);
-    
-    expect(result.password_hash).toBeDefined();
-    expect(result.password_hash).not.toEqual(complexPasswordInput.password);
-    
-    // Verify password can be authenticated by reconstructing hash
-    const [hash, salt] = result.password_hash.split(':');
-    const expectedHash = createHash('sha256').update(complexPasswordInput.password + salt).digest('hex');
-    expect(hash).toEqual(expectedHash);
-  });
-
-  it('should set correct timestamps', async () => {
-    const beforeCreation = new Date();
-    const result = await createUser(testUserInput);
-    const afterCreation = new Date();
-
-    expect(result.created_at).toBeInstanceOf(Date);
-    expect(result.updated_at).toBeInstanceOf(Date);
-    expect(result.created_at.getTime()).toBeGreaterThanOrEqual(beforeCreation.getTime());
-    expect(result.created_at.getTime()).toBeLessThanOrEqual(afterCreation.getTime());
-    expect(result.updated_at.getTime()).toBeGreaterThanOrEqual(beforeCreation.getTime());
-    expect(result.updated_at.getTime()).toBeLessThanOrEqual(afterCreation.getTime());
+    // IDs should be sequential
+    expect(user1.id).toBeDefined();
+    expect(user2.id).toBeDefined();
+    expect(user3.id).toBeDefined();
+    expect(user2.id).toBeGreaterThan(user1.id);
+    expect(user3.id).toBeGreaterThan(user2.id);
   });
 });

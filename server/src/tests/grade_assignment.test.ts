@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { resetDB, createDB } from '../helpers';
 import { db } from '../db';
-import { usersTable, coursesTable, contentTable, assignmentsTable, assignmentSubmissionsTable } from '../db/schema';
+import { usersTable, coursesTable, lessonsTable, assignmentsTable, assignmentSubmissionsTable } from '../db/schema';
 import { type GradeAssignmentInput } from '../schema';
 import { gradeAssignment } from '../handlers/grade_assignment';
 import { eq } from 'drizzle-orm';
@@ -10,229 +10,347 @@ describe('gradeAssignment', () => {
   beforeEach(createDB);
   afterEach(resetDB);
 
-  let studentId: number;
-  let teacherId: number;
-  let courseId: number;
-  let contentId: number;
-  let assignmentId: number;
-  let submissionId: number;
-
-  beforeEach(async () => {
-    // Create test teacher
+  it('should grade an assignment submission', async () => {
+    // Create prerequisite data
+    // Create teacher user
     const teacherResult = await db.insert(usersTable)
       .values({
         email: 'teacher@test.com',
-        password_hash: 'hashedpassword',
-        first_name: 'John',
+        password_hash: 'hashed_password',
+        first_name: 'Jane',
         last_name: 'Teacher',
         role: 'teacher'
       })
       .returning()
       .execute();
-    teacherId = teacherResult[0].id;
 
-    // Create test student
+    // Create student user
     const studentResult = await db.insert(usersTable)
       .values({
         email: 'student@test.com',
-        password_hash: 'hashedpassword',
-        first_name: 'Jane',
+        password_hash: 'hashed_password',
+        first_name: 'John',
         last_name: 'Student',
         role: 'student'
       })
       .returning()
       .execute();
-    studentId = studentResult[0].id;
 
-    // Create test course
+    // Create course
     const courseResult = await db.insert(coursesTable)
       .values({
-        title: 'Test Course',
-        description: 'A course for testing',
-        teacher_id: teacherId
+        title: 'Math 101',
+        description: 'Basic Mathematics',
+        teacher_id: teacherResult[0].id
       })
       .returning()
       .execute();
-    courseId = courseResult[0].id;
 
-    // Create test content
-    const contentResult = await db.insert(contentTable)
+    // Create lesson
+    const lessonResult = await db.insert(lessonsTable)
       .values({
-        course_id: courseId,
-        title: 'Test Assignment Content',
-        description: 'Content for assignment',
-        content_type: 'assignment',
-        content_data: '{"type": "assignment"}',
+        course_id: courseResult[0].id,
+        title: 'Algebra Basics',
+        content: 'Introduction to algebra',
         order_index: 1
       })
       .returning()
       .execute();
-    contentId = contentResult[0].id;
 
-    // Create test assignment
+    // Create assignment
     const assignmentResult = await db.insert(assignmentsTable)
       .values({
-        content_id: contentId,
-        title: 'Test Assignment',
-        description: 'An assignment for testing',
-        instructions: 'Complete this assignment',
+        lesson_id: lessonResult[0].id,
+        title: 'Homework 1',
+        description: 'Solve algebra problems',
         due_date: new Date('2024-12-31'),
-        max_points: '100',
-        status: 'published'
+        max_points: 100
       })
       .returning()
       .execute();
-    assignmentId = assignmentResult[0].id;
 
-    // Create test submission
+    // Create assignment submission
     const submissionResult = await db.insert(assignmentSubmissionsTable)
       .values({
-        student_id: studentId,
-        assignment_id: assignmentId,
-        submission_text: 'This is my assignment submission',
-        file_url: 'https://example.com/submission.pdf',
-        score: null,
-        feedback: null
+        assignment_id: assignmentResult[0].id,
+        student_id: studentResult[0].id,
+        content: 'Student answers here',
+        file_path: null
       })
       .returning()
       .execute();
-    submissionId = submissionResult[0].id;
-  });
 
-  it('should grade an assignment submission successfully', async () => {
     const testInput: GradeAssignmentInput = {
-      submission_id: submissionId,
-      score: 85.5,
-      feedback: 'Good work! Well organized and clear.'
+      submission_id: submissionResult[0].id,
+      grade: 85,
+      feedback: 'Good work, but needs improvement in problem 3'
     };
 
     const result = await gradeAssignment(testInput);
 
-    // Verify the returned submission
-    expect(result.id).toEqual(submissionId);
-    expect(result.student_id).toEqual(studentId);
-    expect(result.assignment_id).toEqual(assignmentId);
-    expect(result.score).toEqual(85.5);
-    expect(result.feedback).toEqual('Good work! Well organized and clear.');
+    // Basic field validation
+    expect(result.id).toEqual(submissionResult[0].id);
+    expect(result.assignment_id).toEqual(assignmentResult[0].id);
+    expect(result.student_id).toEqual(studentResult[0].id);
+    expect(result.grade).toEqual(85);
+    expect(result.feedback).toEqual('Good work, but needs improvement in problem 3');
     expect(result.graded_at).toBeInstanceOf(Date);
-    expect(result.submitted_at).toBeInstanceOf(Date);
-    expect(result.submission_text).toEqual('This is my assignment submission');
-    expect(result.file_url).toEqual('https://example.com/submission.pdf');
-
-    // Verify numeric conversion
-    expect(typeof result.score).toBe('number');
+    expect(result.content).toEqual('Student answers here');
   });
 
-  it('should save graded submission to database', async () => {
+  it('should save grading to database', async () => {
+    // Create prerequisite data
+    const teacherResult = await db.insert(usersTable)
+      .values({
+        email: 'teacher@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'Jane',
+        last_name: 'Teacher',
+        role: 'teacher'
+      })
+      .returning()
+      .execute();
+
+    const studentResult = await db.insert(usersTable)
+      .values({
+        email: 'student@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'John',
+        last_name: 'Student',
+        role: 'student'
+      })
+      .returning()
+      .execute();
+
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Math 101',
+        description: 'Basic Mathematics',
+        teacher_id: teacherResult[0].id
+      })
+      .returning()
+      .execute();
+
+    const lessonResult = await db.insert(lessonsTable)
+      .values({
+        course_id: courseResult[0].id,
+        title: 'Algebra Basics',
+        content: 'Introduction to algebra',
+        order_index: 1
+      })
+      .returning()
+      .execute();
+
+    const assignmentResult = await db.insert(assignmentsTable)
+      .values({
+        lesson_id: lessonResult[0].id,
+        title: 'Homework 1',
+        description: 'Solve algebra problems',
+        due_date: new Date('2024-12-31'),
+        max_points: 100
+      })
+      .returning()
+      .execute();
+
+    const submissionResult = await db.insert(assignmentSubmissionsTable)
+      .values({
+        assignment_id: assignmentResult[0].id,
+        student_id: studentResult[0].id,
+        content: 'Student answers here',
+        file_path: null
+      })
+      .returning()
+      .execute();
+
     const testInput: GradeAssignmentInput = {
-      submission_id: submissionId,
-      score: 92.0,
+      submission_id: submissionResult[0].id,
+      grade: 92,
       feedback: 'Excellent work!'
     };
 
-    await gradeAssignment(testInput);
+    const result = await gradeAssignment(testInput);
 
-    // Query the database to verify the update
+    // Query database to verify the update
     const submissions = await db.select()
       .from(assignmentSubmissionsTable)
-      .where(eq(assignmentSubmissionsTable.id, submissionId))
+      .where(eq(assignmentSubmissionsTable.id, result.id))
       .execute();
 
     expect(submissions).toHaveLength(1);
-    const submission = submissions[0];
-    expect(parseFloat(submission.score!)).toEqual(92.0);
-    expect(submission.feedback).toEqual('Excellent work!');
-    expect(submission.graded_at).toBeInstanceOf(Date);
+    expect(submissions[0].grade).toEqual(92);
+    expect(submissions[0].feedback).toEqual('Excellent work!');
+    expect(submissions[0].graded_at).toBeInstanceOf(Date);
+    expect(submissions[0].assignment_id).toEqual(assignmentResult[0].id);
+    expect(submissions[0].student_id).toEqual(studentResult[0].id);
   });
 
   it('should grade with null feedback', async () => {
+    // Create prerequisite data
+    const teacherResult = await db.insert(usersTable)
+      .values({
+        email: 'teacher@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'Jane',
+        last_name: 'Teacher',
+        role: 'teacher'
+      })
+      .returning()
+      .execute();
+
+    const studentResult = await db.insert(usersTable)
+      .values({
+        email: 'student@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'John',
+        last_name: 'Student',
+        role: 'student'
+      })
+      .returning()
+      .execute();
+
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Math 101',
+        description: 'Basic Mathematics',
+        teacher_id: teacherResult[0].id
+      })
+      .returning()
+      .execute();
+
+    const lessonResult = await db.insert(lessonsTable)
+      .values({
+        course_id: courseResult[0].id,
+        title: 'Algebra Basics',
+        content: 'Introduction to algebra',
+        order_index: 1
+      })
+      .returning()
+      .execute();
+
+    const assignmentResult = await db.insert(assignmentsTable)
+      .values({
+        lesson_id: lessonResult[0].id,
+        title: 'Homework 1',
+        description: 'Solve algebra problems',
+        due_date: new Date('2024-12-31'),
+        max_points: 100
+      })
+      .returning()
+      .execute();
+
+    const submissionResult = await db.insert(assignmentSubmissionsTable)
+      .values({
+        assignment_id: assignmentResult[0].id,
+        student_id: studentResult[0].id,
+        content: 'Student answers here',
+        file_path: null
+      })
+      .returning()
+      .execute();
+
     const testInput: GradeAssignmentInput = {
-      submission_id: submissionId,
-      score: 75.0,
+      submission_id: submissionResult[0].id,
+      grade: 75,
       feedback: null
     };
 
     const result = await gradeAssignment(testInput);
 
-    expect(result.score).toEqual(75.0);
+    expect(result.grade).toEqual(75);
     expect(result.feedback).toBeNull();
     expect(result.graded_at).toBeInstanceOf(Date);
   });
 
-  it('should grade with zero score', async () => {
-    const testInput: GradeAssignmentInput = {
-      submission_id: submissionId,
-      score: 0,
-      feedback: 'Please revise and resubmit'
-    };
-
-    const result = await gradeAssignment(testInput);
-
-    expect(result.score).toEqual(0);
-    expect(result.feedback).toEqual('Please revise and resubmit');
-    expect(typeof result.score).toBe('number');
-  });
-
-  it('should update previously graded submission', async () => {
-    // First grading
-    const firstInput: GradeAssignmentInput = {
-      submission_id: submissionId,
-      score: 70.0,
-      feedback: 'Needs improvement'
-    };
-
-    await gradeAssignment(firstInput);
-
-    // Second grading (update)
-    const secondInput: GradeAssignmentInput = {
-      submission_id: submissionId,
-      score: 85.0,
-      feedback: 'Much better after revision!'
-    };
-
-    const result = await gradeAssignment(secondInput);
-
-    expect(result.score).toEqual(85.0);
-    expect(result.feedback).toEqual('Much better after revision!');
-
-    // Verify in database
-    const submissions = await db.select()
-      .from(assignmentSubmissionsTable)
-      .where(eq(assignmentSubmissionsTable.id, submissionId))
-      .execute();
-
-    expect(parseFloat(submissions[0].score!)).toEqual(85.0);
-    expect(submissions[0].feedback).toEqual('Much better after revision!');
-  });
-
   it('should throw error for non-existent submission', async () => {
     const testInput: GradeAssignmentInput = {
-      submission_id: 99999,
-      score: 80.0,
+      submission_id: 9999, // Non-existent ID
+      grade: 85,
       feedback: 'Good work'
     };
 
-    await expect(gradeAssignment(testInput)).rejects.toThrow(/submission.*not found/i);
+    expect(gradeAssignment(testInput)).rejects.toThrow(/not found/i);
   });
 
-  it('should handle decimal scores correctly', async () => {
+  it('should update previously graded submission', async () => {
+    // Create prerequisite data
+    const teacherResult = await db.insert(usersTable)
+      .values({
+        email: 'teacher@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'Jane',
+        last_name: 'Teacher',
+        role: 'teacher'
+      })
+      .returning()
+      .execute();
+
+    const studentResult = await db.insert(usersTable)
+      .values({
+        email: 'student@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'John',
+        last_name: 'Student',
+        role: 'student'
+      })
+      .returning()
+      .execute();
+
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Math 101',
+        description: 'Basic Mathematics',
+        teacher_id: teacherResult[0].id
+      })
+      .returning()
+      .execute();
+
+    const lessonResult = await db.insert(lessonsTable)
+      .values({
+        course_id: courseResult[0].id,
+        title: 'Algebra Basics',
+        content: 'Introduction to algebra',
+        order_index: 1
+      })
+      .returning()
+      .execute();
+
+    const assignmentResult = await db.insert(assignmentsTable)
+      .values({
+        lesson_id: lessonResult[0].id,
+        title: 'Homework 1',
+        description: 'Solve algebra problems',
+        due_date: new Date('2024-12-31'),
+        max_points: 100
+      })
+      .returning()
+      .execute();
+
+    // Create submission with existing grade
+    const submissionResult = await db.insert(assignmentSubmissionsTable)
+      .values({
+        assignment_id: assignmentResult[0].id,
+        student_id: studentResult[0].id,
+        content: 'Student answers here',
+        file_path: null,
+        grade: 70,
+        feedback: 'Initial feedback',
+        graded_at: new Date('2024-01-01')
+      })
+      .returning()
+      .execute();
+
     const testInput: GradeAssignmentInput = {
-      submission_id: submissionId,
-      score: 87.75,
-      feedback: 'Very good work'
+      submission_id: submissionResult[0].id,
+      grade: 88,
+      feedback: 'Updated feedback after review'
     };
 
     const result = await gradeAssignment(testInput);
 
-    expect(result.score).toEqual(87.75);
-    expect(typeof result.score).toBe('number');
-
-    // Verify precision is maintained in database
-    const submissions = await db.select()
-      .from(assignmentSubmissionsTable)
-      .where(eq(assignmentSubmissionsTable.id, submissionId))
-      .execute();
-
-    expect(parseFloat(submissions[0].score!)).toEqual(87.75);
+    // Verify the grade was updated
+    expect(result.grade).toEqual(88);
+    expect(result.feedback).toEqual('Updated feedback after review');
+    expect(result.graded_at).toBeInstanceOf(Date);
+    expect(result.graded_at!.getTime()).toBeGreaterThan(new Date('2024-01-01').getTime());
   });
 });

@@ -10,181 +10,275 @@ describe('updateCourse', () => {
   beforeEach(createDB);
   afterEach(resetDB);
 
-  let teacherId: number;
-  let courseId: number;
-
-  beforeEach(async () => {
-    // Create a test teacher
+  it('should update course title', async () => {
+    // Create a teacher user first
     const teacherResult = await db.insert(usersTable)
       .values({
         email: 'teacher@test.com',
-        password_hash: 'hashedpassword',
-        first_name: 'Test',
-        last_name: 'Teacher',
+        password_hash: 'hashed_password',
+        first_name: 'John',
+        last_name: 'Doe',
         role: 'teacher'
       })
       .returning()
       .execute();
 
-    teacherId = teacherResult[0].id;
+    const teacher = teacherResult[0];
 
-    // Create a test course
+    // Create a course
     const courseResult = await db.insert(coursesTable)
       .values({
-        title: 'Original Course Title',
-        description: 'Original course description',
-        teacher_id: teacherId
+        title: 'Original Title',
+        description: 'Original description',
+        teacher_id: teacher.id
       })
       .returning()
       .execute();
 
-    courseId = courseResult[0].id;
-  });
+    const course = courseResult[0];
 
-  it('should update course title only', async () => {
-    const input: UpdateCourseInput = {
-      id: courseId,
-      title: 'Updated Course Title'
+    // Update the course title
+    const updateInput: UpdateCourseInput = {
+      id: course.id,
+      title: 'Updated Title'
     };
 
-    const result = await updateCourse(input);
+    const result = await updateCourse(updateInput);
 
-    expect(result.id).toEqual(courseId);
-    expect(result.title).toEqual('Updated Course Title');
-    expect(result.description).toEqual('Original course description'); // Should remain unchanged
-    expect(result.teacher_id).toEqual(teacherId);
+    // Verify the result
+    expect(result.id).toEqual(course.id);
+    expect(result.title).toEqual('Updated Title');
+    expect(result.description).toEqual('Original description');
+    expect(result.teacher_id).toEqual(teacher.id);
+    expect(result.created_at).toBeInstanceOf(Date);
     expect(result.updated_at).toBeInstanceOf(Date);
-    expect(result.updated_at.getTime()).toBeGreaterThan(result.created_at.getTime());
+    expect(result.updated_at > course.updated_at).toBe(true);
   });
 
-  it('should update course description only', async () => {
-    const input: UpdateCourseInput = {
-      id: courseId,
-      description: 'Updated course description'
+  it('should update course description', async () => {
+    // Create a teacher user first
+    const teacherResult = await db.insert(usersTable)
+      .values({
+        email: 'teacher@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'John',
+        last_name: 'Doe',
+        role: 'teacher'
+      })
+      .returning()
+      .execute();
+
+    const teacher = teacherResult[0];
+
+    // Create a course
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Test Course',
+        description: 'Original description',
+        teacher_id: teacher.id
+      })
+      .returning()
+      .execute();
+
+    const course = courseResult[0];
+
+    // Update the course description
+    const updateInput: UpdateCourseInput = {
+      id: course.id,
+      description: 'Updated description'
     };
 
-    const result = await updateCourse(input);
+    const result = await updateCourse(updateInput);
 
-    expect(result.id).toEqual(courseId);
-    expect(result.title).toEqual('Original Course Title'); // Should remain unchanged
-    expect(result.description).toEqual('Updated course description');
-    expect(result.teacher_id).toEqual(teacherId);
-    expect(result.updated_at).toBeInstanceOf(Date);
+    // Verify the result
+    expect(result.id).toEqual(course.id);
+    expect(result.title).toEqual('Test Course');
+    expect(result.description).toEqual('Updated description');
+    expect(result.teacher_id).toEqual(teacher.id);
   });
 
   it('should update both title and description', async () => {
-    const input: UpdateCourseInput = {
-      id: courseId,
-      title: 'New Course Title',
-      description: 'New course description'
+    // Create a teacher user first
+    const teacherResult = await db.insert(usersTable)
+      .values({
+        email: 'teacher@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'John',
+        last_name: 'Doe',
+        role: 'teacher'
+      })
+      .returning()
+      .execute();
+
+    const teacher = teacherResult[0];
+
+    // Create a course
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Original Title',
+        description: 'Original description',
+        teacher_id: teacher.id
+      })
+      .returning()
+      .execute();
+
+    const course = courseResult[0];
+
+    // Update both title and description
+    const updateInput: UpdateCourseInput = {
+      id: course.id,
+      title: 'Updated Title',
+      description: 'Updated description'
     };
 
-    const result = await updateCourse(input);
+    const result = await updateCourse(updateInput);
 
-    expect(result.id).toEqual(courseId);
-    expect(result.title).toEqual('New Course Title');
-    expect(result.description).toEqual('New course description');
-    expect(result.teacher_id).toEqual(teacherId);
-    expect(result.updated_at).toBeInstanceOf(Date);
+    // Verify the result
+    expect(result.id).toEqual(course.id);
+    expect(result.title).toEqual('Updated Title');
+    expect(result.description).toEqual('Updated description');
+    expect(result.teacher_id).toEqual(teacher.id);
   });
 
-  it('should update description to null', async () => {
-    const input: UpdateCourseInput = {
-      id: courseId,
+  it('should set description to null when provided', async () => {
+    // Create a teacher user first
+    const teacherResult = await db.insert(usersTable)
+      .values({
+        email: 'teacher@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'John',
+        last_name: 'Doe',
+        role: 'teacher'
+      })
+      .returning()
+      .execute();
+
+    const teacher = teacherResult[0];
+
+    // Create a course with description
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Test Course',
+        description: 'Original description',
+        teacher_id: teacher.id
+      })
+      .returning()
+      .execute();
+
+    const course = courseResult[0];
+
+    // Update the course to set description to null
+    const updateInput: UpdateCourseInput = {
+      id: course.id,
       description: null
     };
 
-    const result = await updateCourse(input);
+    const result = await updateCourse(updateInput);
 
-    expect(result.id).toEqual(courseId);
-    expect(result.title).toEqual('Original Course Title'); // Should remain unchanged
+    // Verify the result
+    expect(result.id).toEqual(course.id);
+    expect(result.title).toEqual('Test Course');
     expect(result.description).toBeNull();
-    expect(result.teacher_id).toEqual(teacherId);
+    expect(result.teacher_id).toEqual(teacher.id);
   });
 
-  it('should save updates to database', async () => {
-    const input: UpdateCourseInput = {
-      id: courseId,
-      title: 'Database Test Title',
-      description: 'Database test description'
+  it('should persist changes to database', async () => {
+    // Create a teacher user first
+    const teacherResult = await db.insert(usersTable)
+      .values({
+        email: 'teacher@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'John',
+        last_name: 'Doe',
+        role: 'teacher'
+      })
+      .returning()
+      .execute();
+
+    const teacher = teacherResult[0];
+
+    // Create a course
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Original Title',
+        description: 'Original description',
+        teacher_id: teacher.id
+      })
+      .returning()
+      .execute();
+
+    const course = courseResult[0];
+
+    // Update the course
+    const updateInput: UpdateCourseInput = {
+      id: course.id,
+      title: 'Updated Title',
+      description: 'Updated description'
     };
 
-    await updateCourse(input);
+    await updateCourse(updateInput);
 
-    // Verify changes were persisted to database
+    // Verify changes persisted in database
     const courses = await db.select()
       .from(coursesTable)
-      .where(eq(coursesTable.id, courseId))
+      .where(eq(coursesTable.id, course.id))
       .execute();
 
     expect(courses).toHaveLength(1);
-    expect(courses[0].title).toEqual('Database Test Title');
-    expect(courses[0].description).toEqual('Database test description');
+    expect(courses[0].title).toEqual('Updated Title');
+    expect(courses[0].description).toEqual('Updated description');
+    expect(courses[0].teacher_id).toEqual(teacher.id);
     expect(courses[0].updated_at).toBeInstanceOf(Date);
   });
 
-  it('should update updated_at timestamp', async () => {
-    // Get original timestamp
-    const originalCourses = await db.select()
-      .from(coursesTable)
-      .where(eq(coursesTable.id, courseId))
-      .execute();
-    
-    const originalUpdatedAt = originalCourses[0].updated_at;
-
-    // Wait a small amount to ensure timestamp difference
-    await new Promise(resolve => setTimeout(resolve, 10));
-
-    const input: UpdateCourseInput = {
-      id: courseId,
-      title: 'Timestamp Test'
-    };
-
-    const result = await updateCourse(input);
-
-    expect(result.updated_at.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
-  });
-
   it('should throw error for non-existent course', async () => {
-    const input: UpdateCourseInput = {
-      id: 99999,
-      title: 'Non-existent Course'
+    const updateInput: UpdateCourseInput = {
+      id: 9999, // Non-existent ID
+      title: 'Updated Title'
     };
 
-    expect(updateCourse(input)).rejects.toThrow(/Course with id 99999 not found/);
+    await expect(updateCourse(updateInput)).rejects.toThrow(/Course with id 9999 not found/i);
   });
 
-  it('should handle update with no optional fields', async () => {
-    const input: UpdateCourseInput = {
-      id: courseId
-    };
-
-    const result = await updateCourse(input);
-
-    // Should return the course with updated timestamp but no field changes
-    expect(result.id).toEqual(courseId);
-    expect(result.title).toEqual('Original Course Title');
-    expect(result.description).toEqual('Original course description');
-    expect(result.teacher_id).toEqual(teacherId);
-    expect(result.updated_at).toBeInstanceOf(Date);
-  });
-
-  it('should preserve teacher_id during update', async () => {
-    const input: UpdateCourseInput = {
-      id: courseId,
-      title: 'Teacher Preservation Test'
-    };
-
-    const result = await updateCourse(input);
-
-    expect(result.teacher_id).toEqual(teacherId);
-    
-    // Verify in database
-    const courses = await db.select()
-      .from(coursesTable)
-      .where(eq(coursesTable.id, courseId))
+  it('should only update provided fields', async () => {
+    // Create a teacher user first
+    const teacherResult = await db.insert(usersTable)
+      .values({
+        email: 'teacher@test.com',
+        password_hash: 'hashed_password',
+        first_name: 'John',
+        last_name: 'Doe',
+        role: 'teacher'
+      })
+      .returning()
       .execute();
 
-    expect(courses[0].teacher_id).toEqual(teacherId);
+    const teacher = teacherResult[0];
+
+    // Create a course
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Original Title',
+        description: 'Original description',
+        teacher_id: teacher.id
+      })
+      .returning()
+      .execute();
+
+    const course = courseResult[0];
+
+    // Update only the title (no description field provided)
+    const updateInput: UpdateCourseInput = {
+      id: course.id,
+      title: 'Updated Title Only'
+    };
+
+    const result = await updateCourse(updateInput);
+
+    // Verify only title was updated, description remained unchanged
+    expect(result.id).toEqual(course.id);
+    expect(result.title).toEqual('Updated Title Only');
+    expect(result.description).toEqual('Original description'); // Should remain unchanged
+    expect(result.teacher_id).toEqual(teacher.id);
   });
 });

@@ -1,16 +1,34 @@
+import { db } from '../db';
+import { lessonsTable, coursesTable } from '../db/schema';
 import { type CreateLessonInput, type Lesson } from '../schema';
+import { eq } from 'drizzle-orm';
 
-export async function createLesson(input: CreateLessonInput): Promise<Lesson> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is for teacher users to create new lessons within courses
-    // with rich text content and persist them in the database.
-    return Promise.resolve({
-        id: 0, // Placeholder ID
+export const createLesson = async (input: CreateLessonInput): Promise<Lesson> => {
+  try {
+    // Verify the course exists before creating the lesson
+    const courseExists = await db.select({ id: coursesTable.id })
+      .from(coursesTable)
+      .where(eq(coursesTable.id, input.course_id))
+      .execute();
+
+    if (courseExists.length === 0) {
+      throw new Error(`Course with id ${input.course_id} does not exist`);
+    }
+
+    // Insert lesson record
+    const result = await db.insert(lessonsTable)
+      .values({
         course_id: input.course_id,
         title: input.title,
         content: input.content,
-        order_index: input.order_index,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as Lesson);
-}
+        order_index: input.order_index
+      })
+      .returning()
+      .execute();
+
+    return result[0];
+  } catch (error) {
+    console.error('Lesson creation failed:', error);
+    throw error;
+  }
+};

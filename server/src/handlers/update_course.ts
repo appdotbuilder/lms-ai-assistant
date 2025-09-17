@@ -1,15 +1,37 @@
+import { db } from '../db';
+import { coursesTable } from '../db/schema';
 import { type UpdateCourseInput, type Course } from '../schema';
+import { eq } from 'drizzle-orm';
 
-export async function updateCourse(input: UpdateCourseInput): Promise<Course> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is for teacher users to update their course information
-    // (title, description) in the database.
-    return Promise.resolve({
-        id: input.id,
-        title: input.title || 'Placeholder Title',
-        description: input.description !== undefined ? input.description : null,
-        teacher_id: 0, // Placeholder teacher ID
-        created_at: new Date(),
-        updated_at: new Date()
-    } as Course);
-}
+export const updateCourse = async (input: UpdateCourseInput): Promise<Course> => {
+  try {
+    // Build the update object with only provided fields
+    const updateData: Partial<typeof coursesTable.$inferInsert> = {
+      updated_at: new Date()
+    };
+
+    if (input.title !== undefined) {
+      updateData.title = input.title;
+    }
+
+    if (input.description !== undefined) {
+      updateData.description = input.description;
+    }
+
+    // Update the course record
+    const result = await db.update(coursesTable)
+      .set(updateData)
+      .where(eq(coursesTable.id, input.id))
+      .returning()
+      .execute();
+
+    if (result.length === 0) {
+      throw new Error(`Course with id ${input.id} not found`);
+    }
+
+    return result[0];
+  } catch (error) {
+    console.error('Course update failed:', error);
+    throw error;
+  }
+};

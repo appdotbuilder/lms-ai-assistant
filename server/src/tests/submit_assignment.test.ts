@@ -1,320 +1,417 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { resetDB, createDB } from '../helpers';
 import { db } from '../db';
-import { 
-  usersTable, 
-  coursesTable, 
-  contentTable, 
-  assignmentsTable, 
-  courseEnrollmentsTable, 
-  assignmentSubmissionsTable 
-} from '../db/schema';
+import { usersTable, coursesTable, lessonsTable, assignmentsTable, assignmentSubmissionsTable } from '../db/schema';
 import { type SubmitAssignmentInput } from '../schema';
 import { submitAssignment } from '../handlers/submit_assignment';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 
 // Test data
-let testTeacher: any;
-let testStudent: any;
-let testCourse: any;
-let testContent: any;
-let testAssignment: any;
+const testTeacher = {
+  email: 'teacher@test.com',
+  password_hash: 'hashed_password',
+  first_name: 'John',
+  last_name: 'Teacher',
+  role: 'teacher' as const
+};
 
-const validSubmissionInput: SubmitAssignmentInput = {
-  student_id: 0, // Will be set in beforeEach
-  assignment_id: 0, // Will be set in beforeEach
-  submission_text: 'This is my assignment submission text.',
-  file_url: null
+const testStudent = {
+  email: 'student@test.com',
+  password_hash: 'hashed_password',
+  first_name: 'Jane',
+  last_name: 'Student',
+  role: 'student' as const
+};
+
+const testAdmin = {
+  email: 'admin@test.com',
+  password_hash: 'hashed_password',
+  first_name: 'Admin',
+  last_name: 'User',
+  role: 'admin' as const
 };
 
 describe('submitAssignment', () => {
-  beforeEach(async () => {
-    await createDB();
+  beforeEach(createDB);
+  afterEach(resetDB);
 
-    // Create test teacher
-    const teacherResult = await db.insert(usersTable)
-      .values({
-        email: 'teacher@test.com',
-        password_hash: 'hashedpassword',
-        first_name: 'Teacher',
-        last_name: 'User',
-        role: 'teacher'
-      })
-      .returning()
-      .execute();
-    testTeacher = teacherResult[0];
-
-    // Create test student
-    const studentResult = await db.insert(usersTable)
-      .values({
-        email: 'student@test.com',
-        password_hash: 'hashedpassword',
-        first_name: 'Student',
-        last_name: 'User',
-        role: 'student'
-      })
-      .returning()
-      .execute();
-    testStudent = studentResult[0];
-
-    // Create test course
+  it('should submit assignment successfully with content only', async () => {
+    // Create test data
+    const teacherResult = await db.insert(usersTable).values(testTeacher).returning().execute();
+    const studentResult = await db.insert(usersTable).values(testStudent).returning().execute();
+    
     const courseResult = await db.insert(coursesTable)
       .values({
         title: 'Test Course',
-        description: 'A course for testing',
-        teacher_id: testTeacher.id
+        description: 'A test course',
+        teacher_id: teacherResult[0].id
       })
       .returning()
       .execute();
-    testCourse = courseResult[0];
 
-    // Create test content
-    const contentResult = await db.insert(contentTable)
+    const lessonResult = await db.insert(lessonsTable)
       .values({
-        course_id: testCourse.id,
-        title: 'Test Content',
-        description: 'Content for testing',
-        content_type: 'assignment',
-        content_data: '{}',
+        course_id: courseResult[0].id,
+        title: 'Test Lesson',
+        content: 'Test lesson content',
         order_index: 1
       })
       .returning()
       .execute();
-    testContent = contentResult[0];
 
-    // Create test assignment
     const assignmentResult = await db.insert(assignmentsTable)
       .values({
-        content_id: testContent.id,
+        lesson_id: lessonResult[0].id,
         title: 'Test Assignment',
-        description: 'An assignment for testing',
-        instructions: 'Complete this assignment',
-        due_date: new Date(Date.now() + 86400000), // Tomorrow
-        max_points: '100',
-        status: 'published'
+        description: 'A test assignment',
+        due_date: new Date('2024-12-31'),
+        max_points: 100
       })
       .returning()
       .execute();
-    testAssignment = assignmentResult[0];
 
-    // Enroll student in course
-    await db.insert(courseEnrollmentsTable)
-      .values({
-        course_id: testCourse.id,
-        student_id: testStudent.id
-      })
-      .execute();
+    const input: SubmitAssignmentInput = {
+      assignment_id: assignmentResult[0].id,
+      student_id: studentResult[0].id,
+      content: 'This is my assignment submission content',
+      file_path: null
+    };
 
-    // Update test input with actual IDs
-    validSubmissionInput.student_id = testStudent.id;
-    validSubmissionInput.assignment_id = testAssignment.id;
-  });
+    const result = await submitAssignment(input);
 
-  afterEach(resetDB);
-
-  it('should successfully submit assignment with text', async () => {
-    const result = await submitAssignment(validSubmissionInput);
-
-    // Verify returned submission
-    expect(result.student_id).toEqual(testStudent.id);
-    expect(result.assignment_id).toEqual(testAssignment.id);
-    expect(result.submission_text).toEqual('This is my assignment submission text.');
-    expect(result.file_url).toBeNull();
-    expect(result.score).toBeNull();
-    expect(result.feedback).toBeNull();
+    // Verify return values
     expect(result.id).toBeDefined();
+    expect(result.assignment_id).toEqual(assignmentResult[0].id);
+    expect(result.student_id).toEqual(studentResult[0].id);
+    expect(result.content).toEqual('This is my assignment submission content');
+    expect(result.file_path).toBeNull();
     expect(result.submitted_at).toBeInstanceOf(Date);
+    expect(result.grade).toBeNull();
+    expect(result.feedback).toBeNull();
     expect(result.graded_at).toBeNull();
   });
 
-  it('should successfully submit assignment with file URL', async () => {
-    const inputWithFile: SubmitAssignmentInput = {
-      student_id: testStudent.id,
-      assignment_id: testAssignment.id,
-      submission_text: null,
-      file_url: 'https://example.com/assignment.pdf'
+  it('should submit assignment successfully with file path only', async () => {
+    // Create test data
+    const teacherResult = await db.insert(usersTable).values(testTeacher).returning().execute();
+    const studentResult = await db.insert(usersTable).values(testStudent).returning().execute();
+    
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Test Course',
+        description: 'A test course',
+        teacher_id: teacherResult[0].id
+      })
+      .returning()
+      .execute();
+
+    const lessonResult = await db.insert(lessonsTable)
+      .values({
+        course_id: courseResult[0].id,
+        title: 'Test Lesson',
+        content: 'Test lesson content',
+        order_index: 1
+      })
+      .returning()
+      .execute();
+
+    const assignmentResult = await db.insert(assignmentsTable)
+      .values({
+        lesson_id: lessonResult[0].id,
+        title: 'Test Assignment',
+        description: 'A test assignment',
+        due_date: new Date('2024-12-31'),
+        max_points: 100
+      })
+      .returning()
+      .execute();
+
+    const input: SubmitAssignmentInput = {
+      assignment_id: assignmentResult[0].id,
+      student_id: studentResult[0].id,
+      content: null,
+      file_path: '/uploads/assignments/assignment_file.pdf'
     };
 
-    const result = await submitAssignment(inputWithFile);
+    const result = await submitAssignment(input);
 
-    expect(result.submission_text).toBeNull();
-    expect(result.file_url).toEqual('https://example.com/assignment.pdf');
-    expect(result.student_id).toEqual(testStudent.id);
-    expect(result.assignment_id).toEqual(testAssignment.id);
+    // Verify return values
+    expect(result.id).toBeDefined();
+    expect(result.assignment_id).toEqual(assignmentResult[0].id);
+    expect(result.student_id).toEqual(studentResult[0].id);
+    expect(result.content).toBeNull();
+    expect(result.file_path).toEqual('/uploads/assignments/assignment_file.pdf');
+    expect(result.submitted_at).toBeInstanceOf(Date);
+    expect(result.grade).toBeNull();
+    expect(result.feedback).toBeNull();
+    expect(result.graded_at).toBeNull();
   });
 
-  it('should successfully submit assignment with both text and file', async () => {
-    const inputWithBoth: SubmitAssignmentInput = {
-      student_id: testStudent.id,
-      assignment_id: testAssignment.id,
-      submission_text: 'Assignment text content',
-      file_url: 'https://example.com/assignment.pdf'
+  it('should submit assignment successfully with both content and file path', async () => {
+    // Create test data
+    const teacherResult = await db.insert(usersTable).values(testTeacher).returning().execute();
+    const studentResult = await db.insert(usersTable).values(testStudent).returning().execute();
+    
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Test Course',
+        description: 'A test course',
+        teacher_id: teacherResult[0].id
+      })
+      .returning()
+      .execute();
+
+    const lessonResult = await db.insert(lessonsTable)
+      .values({
+        course_id: courseResult[0].id,
+        title: 'Test Lesson',
+        content: 'Test lesson content',
+        order_index: 1
+      })
+      .returning()
+      .execute();
+
+    const assignmentResult = await db.insert(assignmentsTable)
+      .values({
+        lesson_id: lessonResult[0].id,
+        title: 'Test Assignment',
+        description: 'A test assignment',
+        due_date: new Date('2024-12-31'),
+        max_points: 100
+      })
+      .returning()
+      .execute();
+
+    const input: SubmitAssignmentInput = {
+      assignment_id: assignmentResult[0].id,
+      student_id: studentResult[0].id,
+      content: 'Here is my written response along with the attached file',
+      file_path: '/uploads/assignments/assignment_with_attachment.docx'
     };
 
-    const result = await submitAssignment(inputWithBoth);
+    const result = await submitAssignment(input);
 
-    expect(result.submission_text).toEqual('Assignment text content');
-    expect(result.file_url).toEqual('https://example.com/assignment.pdf');
+    // Verify return values
+    expect(result.assignment_id).toEqual(assignmentResult[0].id);
+    expect(result.student_id).toEqual(studentResult[0].id);
+    expect(result.content).toEqual('Here is my written response along with the attached file');
+    expect(result.file_path).toEqual('/uploads/assignments/assignment_with_attachment.docx');
   });
 
   it('should save submission to database', async () => {
-    const result = await submitAssignment(validSubmissionInput);
+    // Create test data
+    const teacherResult = await db.insert(usersTable).values(testTeacher).returning().execute();
+    const studentResult = await db.insert(usersTable).values(testStudent).returning().execute();
+    
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Test Course',
+        description: 'A test course',
+        teacher_id: teacherResult[0].id
+      })
+      .returning()
+      .execute();
 
-    // Query database to verify submission was saved
+    const lessonResult = await db.insert(lessonsTable)
+      .values({
+        course_id: courseResult[0].id,
+        title: 'Test Lesson',
+        content: 'Test lesson content',
+        order_index: 1
+      })
+      .returning()
+      .execute();
+
+    const assignmentResult = await db.insert(assignmentsTable)
+      .values({
+        lesson_id: lessonResult[0].id,
+        title: 'Test Assignment',
+        description: 'A test assignment',
+        due_date: new Date('2024-12-31'),
+        max_points: 100
+      })
+      .returning()
+      .execute();
+
+    const input: SubmitAssignmentInput = {
+      assignment_id: assignmentResult[0].id,
+      student_id: studentResult[0].id,
+      content: 'Database test submission',
+      file_path: null
+    };
+
+    const result = await submitAssignment(input);
+
+    // Verify data was saved to database
     const submissions = await db.select()
       .from(assignmentSubmissionsTable)
       .where(eq(assignmentSubmissionsTable.id, result.id))
       .execute();
 
     expect(submissions).toHaveLength(1);
-    expect(submissions[0].student_id).toEqual(testStudent.id);
-    expect(submissions[0].assignment_id).toEqual(testAssignment.id);
-    expect(submissions[0].submission_text).toEqual('This is my assignment submission text.');
+    expect(submissions[0].assignment_id).toEqual(assignmentResult[0].id);
+    expect(submissions[0].student_id).toEqual(studentResult[0].id);
+    expect(submissions[0].content).toEqual('Database test submission');
+    expect(submissions[0].file_path).toBeNull();
     expect(submissions[0].submitted_at).toBeInstanceOf(Date);
   });
 
-  it('should throw error for non-existent assignment', async () => {
-    const invalidInput: SubmitAssignmentInput = {
-      student_id: testStudent.id,
-      assignment_id: 99999, // Non-existent ID
-      submission_text: 'Test submission',
-      file_url: null
+  it('should throw error when assignment does not exist', async () => {
+    // Create student but no assignment
+    const studentResult = await db.insert(usersTable).values(testStudent).returning().execute();
+
+    const input: SubmitAssignmentInput = {
+      assignment_id: 99999, // Non-existent assignment
+      student_id: studentResult[0].id,
+      content: 'Test submission',
+      file_path: null
     };
 
-    await expect(submitAssignment(invalidInput)).rejects.toThrow(/assignment not found/i);
+    await expect(submitAssignment(input)).rejects.toThrow(/Assignment with id 99999 not found/i);
   });
 
-  it('should throw error for non-existent student', async () => {
-    const invalidInput: SubmitAssignmentInput = {
-      student_id: 99999, // Non-existent ID
-      assignment_id: testAssignment.id,
-      submission_text: 'Test submission',
-      file_url: null
-    };
-
-    await expect(submitAssignment(invalidInput)).rejects.toThrow(/student not found/i);
-  });
-
-  it('should throw error when student is not enrolled in course', async () => {
-    // Create another student not enrolled in the course
-    const unenrolledStudentResult = await db.insert(usersTable)
+  it('should throw error when student does not exist', async () => {
+    // Create assignment but no student
+    const teacherResult = await db.insert(usersTable).values(testTeacher).returning().execute();
+    
+    const courseResult = await db.insert(coursesTable)
       .values({
-        email: 'unenrolled@test.com',
-        password_hash: 'hashedpassword',
-        first_name: 'Unenrolled',
-        last_name: 'Student',
-        role: 'student'
+        title: 'Test Course',
+        description: 'A test course',
+        teacher_id: teacherResult[0].id
       })
       .returning()
       .execute();
 
-    const invalidInput: SubmitAssignmentInput = {
-      student_id: unenrolledStudentResult[0].id,
-      assignment_id: testAssignment.id,
-      submission_text: 'Test submission',
-      file_url: null
-    };
-
-    await expect(submitAssignment(invalidInput)).rejects.toThrow(/student is not enrolled/i);
-  });
-
-  it('should throw error for draft assignment', async () => {
-    // Create draft assignment
-    const draftAssignmentResult = await db.insert(assignmentsTable)
+    const lessonResult = await db.insert(lessonsTable)
       .values({
-        content_id: testContent.id,
-        title: 'Draft Assignment',
-        description: 'A draft assignment',
-        instructions: 'Complete this assignment',
-        due_date: new Date(Date.now() + 86400000),
-        max_points: '100',
-        status: 'draft'
+        course_id: courseResult[0].id,
+        title: 'Test Lesson',
+        content: 'Test lesson content',
+        order_index: 1
       })
       .returning()
       .execute();
 
-    const invalidInput: SubmitAssignmentInput = {
-      student_id: testStudent.id,
-      assignment_id: draftAssignmentResult[0].id,
-      submission_text: 'Test submission',
-      file_url: null
-    };
-
-    await expect(submitAssignment(invalidInput)).rejects.toThrow(/assignment is not available for submission/i);
-  });
-
-  it('should throw error for assignment past due date', async () => {
-    // Create assignment with past due date
-    const pastDueAssignmentResult = await db.insert(assignmentsTable)
+    const assignmentResult = await db.insert(assignmentsTable)
       .values({
-        content_id: testContent.id,
-        title: 'Past Due Assignment',
-        description: 'An assignment past due',
-        instructions: 'Complete this assignment',
-        due_date: new Date(Date.now() - 86400000), // Yesterday
-        max_points: '100',
-        status: 'published'
+        lesson_id: lessonResult[0].id,
+        title: 'Test Assignment',
+        description: 'A test assignment',
+        due_date: new Date('2024-12-31'),
+        max_points: 100
       })
       .returning()
       .execute();
 
-    const invalidInput: SubmitAssignmentInput = {
-      student_id: testStudent.id,
-      assignment_id: pastDueAssignmentResult[0].id,
-      submission_text: 'Test submission',
-      file_url: null
+    const input: SubmitAssignmentInput = {
+      assignment_id: assignmentResult[0].id,
+      student_id: 99999, // Non-existent student
+      content: 'Test submission',
+      file_path: null
     };
 
-    await expect(submitAssignment(invalidInput)).rejects.toThrow(/assignment submission deadline has passed/i);
-  });
-
-  it('should throw error when neither text nor file is provided', async () => {
-    const invalidInput: SubmitAssignmentInput = {
-      student_id: testStudent.id,
-      assignment_id: testAssignment.id,
-      submission_text: null,
-      file_url: null
-    };
-
-    await expect(submitAssignment(invalidInput)).rejects.toThrow(/submission must include either text or file/i);
+    await expect(submitAssignment(input)).rejects.toThrow(/Student with id 99999 not found/i);
   });
 
   it('should throw error when user is not a student', async () => {
-    // Try to submit as teacher
-    const invalidInput: SubmitAssignmentInput = {
-      student_id: testTeacher.id,
-      assignment_id: testAssignment.id,
-      submission_text: 'Test submission',
-      file_url: null
-    };
-
-    await expect(submitAssignment(invalidInput)).rejects.toThrow(/student not found/i);
-  });
-
-  it('should allow submission for assignment without due date', async () => {
-    // Create assignment without due date
-    const noDueDateAssignmentResult = await db.insert(assignmentsTable)
+    // Create assignment and admin user (not student)
+    const adminResult = await db.insert(usersTable).values(testAdmin).returning().execute();
+    const teacherResult = await db.insert(usersTable).values(testTeacher).returning().execute();
+    
+    const courseResult = await db.insert(coursesTable)
       .values({
-        content_id: testContent.id,
-        title: 'No Due Date Assignment',
-        description: 'An assignment without due date',
-        instructions: 'Complete this assignment',
-        due_date: null,
-        max_points: '100',
-        status: 'published'
+        title: 'Test Course',
+        description: 'A test course',
+        teacher_id: teacherResult[0].id
       })
       .returning()
       .execute();
 
-    const validInput: SubmitAssignmentInput = {
-      student_id: testStudent.id,
-      assignment_id: noDueDateAssignmentResult[0].id,
-      submission_text: 'Test submission',
-      file_url: null
+    const lessonResult = await db.insert(lessonsTable)
+      .values({
+        course_id: courseResult[0].id,
+        title: 'Test Lesson',
+        content: 'Test lesson content',
+        order_index: 1
+      })
+      .returning()
+      .execute();
+
+    const assignmentResult = await db.insert(assignmentsTable)
+      .values({
+        lesson_id: lessonResult[0].id,
+        title: 'Test Assignment',
+        description: 'A test assignment',
+        due_date: new Date('2024-12-31'),
+        max_points: 100
+      })
+      .returning()
+      .execute();
+
+    const input: SubmitAssignmentInput = {
+      assignment_id: assignmentResult[0].id,
+      student_id: adminResult[0].id, // Admin user, not student
+      content: 'Test submission',
+      file_path: null
     };
 
-    const result = await submitAssignment(validInput);
-    expect(result.submission_text).toEqual('Test submission');
-    expect(result.student_id).toEqual(testStudent.id);
+    await expect(submitAssignment(input)).rejects.toThrow(/Student with id .* not found/i);
+  });
+
+  it('should throw error when student has already submitted the assignment', async () => {
+    // Create test data
+    const teacherResult = await db.insert(usersTable).values(testTeacher).returning().execute();
+    const studentResult = await db.insert(usersTable).values(testStudent).returning().execute();
+    
+    const courseResult = await db.insert(coursesTable)
+      .values({
+        title: 'Test Course',
+        description: 'A test course',
+        teacher_id: teacherResult[0].id
+      })
+      .returning()
+      .execute();
+
+    const lessonResult = await db.insert(lessonsTable)
+      .values({
+        course_id: courseResult[0].id,
+        title: 'Test Lesson',
+        content: 'Test lesson content',
+        order_index: 1
+      })
+      .returning()
+      .execute();
+
+    const assignmentResult = await db.insert(assignmentsTable)
+      .values({
+        lesson_id: lessonResult[0].id,
+        title: 'Test Assignment',
+        description: 'A test assignment',
+        due_date: new Date('2024-12-31'),
+        max_points: 100
+      })
+      .returning()
+      .execute();
+
+    const input: SubmitAssignmentInput = {
+      assignment_id: assignmentResult[0].id,
+      student_id: studentResult[0].id,
+      content: 'First submission',
+      file_path: null
+    };
+
+    // First submission should succeed
+    await submitAssignment(input);
+
+    // Second submission should fail
+    const secondInput: SubmitAssignmentInput = {
+      assignment_id: assignmentResult[0].id,
+      student_id: studentResult[0].id,
+      content: 'Second submission attempt',
+      file_path: null
+    };
+
+    await expect(submitAssignment(secondInput)).rejects.toThrow(/Student .* has already submitted assignment/i);
   });
 });

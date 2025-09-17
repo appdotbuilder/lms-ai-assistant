@@ -1,15 +1,32 @@
+import { db } from '../db';
+import { quizzesTable } from '../db/schema';
 import { type Quiz } from '../schema';
+import { eq } from 'drizzle-orm';
 
 export async function getQuizzesByLesson(lessonId: number): Promise<Quiz[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch all quizzes for a specific lesson
-    // for both teachers (management) and students (taking quizzes).
-    return [];
+  try {
+    const results = await db.select()
+      .from(quizzesTable)
+      .where(eq(quizzesTable.lesson_id, lessonId))
+      .execute();
+
+    return results;
+  } catch (error) {
+    console.error('Failed to fetch quizzes by lesson:', error);
+    throw error;
+  }
 }
 
 export async function getQuiz(quizId: number): Promise<Quiz | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch a specific quiz with all details
-    // for viewing or editing.
-    return null;
+  try {
+    const results = await db.select()
+      .from(quizzesTable)
+      .where(eq(quizzesTable.id, quizId))
+      .execute();
+
+    return results.length > 0 ? results[0] : null;
+  } catch (error) {
+    console.error('Failed to fetch quiz:', error);
+    throw error;
+  }
 }
