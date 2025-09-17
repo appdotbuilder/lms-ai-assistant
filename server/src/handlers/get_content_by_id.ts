@@ -1,8 +1,30 @@
+import { db } from '../db';
+import { contentTable } from '../db/schema';
 import { type Content } from '../schema';
+import { eq } from 'drizzle-orm';
 
-export async function getContentById(id: number): Promise<Content | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching a specific piece of content by its ID.
-    // Should include proper authorization to ensure the user has access to the content.
-    return null;
-}
+export const getContentById = async (id: number): Promise<Content | null> => {
+  try {
+    // Query content by ID
+    const results = await db.select()
+      .from(contentTable)
+      .where(eq(contentTable.id, id))
+      .execute();
+
+    // Return null if content not found
+    if (results.length === 0) {
+      return null;
+    }
+
+    const content = results[0];
+
+    // Return content with proper type conversion
+    return {
+      ...content,
+      // No numeric conversions needed - all fields are already correct types
+    };
+  } catch (error) {
+    console.error('Content fetch failed:', error);
+    throw error;
+  }
+};

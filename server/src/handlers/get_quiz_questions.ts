@@ -1,9 +1,23 @@
+import { db } from '../db';
+import { quizQuestionsTable } from '../db/schema';
 import { type QuizQuestion } from '../schema';
+import { eq, asc } from 'drizzle-orm';
 
-export async function getQuizQuestions(quizId: number): Promise<QuizQuestion[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching all questions for a specific quiz, ordered by order_index.
-    // Should include proper authorization to ensure the user has access to the quiz.
-    // For students taking the quiz, should NOT include the correct_answer field.
-    return [];
-}
+export const getQuizQuestions = async (quizId: number): Promise<QuizQuestion[]> => {
+  try {
+    const results = await db.select()
+      .from(quizQuestionsTable)
+      .where(eq(quizQuestionsTable.quiz_id, quizId))
+      .orderBy(asc(quizQuestionsTable.order_index))
+      .execute();
+
+    // Convert numeric fields back to numbers
+    return results.map(question => ({
+      ...question,
+      points: parseFloat(question.points)
+    }));
+  } catch (error) {
+    console.error('Failed to get quiz questions:', error);
+    throw error;
+  }
+};
